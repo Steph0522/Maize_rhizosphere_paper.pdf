@@ -1,0 +1,318 @@
+---
+title: "Alpha Functionality"
+author:
+- name: Yendi E. Navarro-Noya
+  affiliation: Laboratory of Biotic Interactions, Centro de Investigación en Ciencias
+    Biológicas, Universidad Autónoma de Tlaxcala, Tlaxcala, Mexico
+  email: yendiebenezer.navarro.n@uatx.mx
+- name: Stephanie Hereira-Pacheco
+  affiliation: Laboratory of Soil Ecology, CINVESTAV-IPN, Ciudad de México, Mexico
+  email: shereirap@gmail.com
+date: "`r format(Sys.time(), '%d - %m - %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    df_print: paged
+---
+
+# II. ALPHA AND FUNCTIONALITY PLOT
+
+### Loading libraries
+
+```{r, warning=FALSE, message=FALSE}
+library(hillR)
+library(gplots)
+library(lme4)
+library(nlme)
+library(ggplot2)
+library(cowplot)
+library(pgirmess) # includes PermTest()
+library(dplyr)
+
+```
+
+### Loading files and formatting
+
+```{r}
+#Species as rows, traits as columns
+EC_predicted <- read.delim(gzfile("../Data/EC_predicted.tsv.gz"), row.names=1)
+KO_predicted <- read.delim(gzfile("../Data/KO_predicted.tsv.gz"), row.names=1)
+
+#Sites as rows, species as columns
+otutable <- read.delim("../Data/otutable_final_picrust2.txt", row.names=1)
+otu_table<- otutable[,1:72]
+totutable <- t(otu_table)
+totutable <- totutable[ , match(rownames(KO_predicted), colnames(totutable))]
+
+```
+
+### Functional diversity with Hill numbers
+
+```{r}
+#Calculate the functional diversity (Not running due to long time)
+
+#func_parti_q0<-hill_func_parti(totutable, traits = EC_predicted, q = 0)
+#func_parti_q1<-hill_func_parti(totutable, traits = EC_predicted, q = 1)
+#func_parti_q2<-hill_func_parti(totutable, traits = EC_predicted, q = 2)
+
+#func_q0<- hill_func(totutable, traits = EC_predicted, q = 0)
+#func_q1<- hill_func(totutable, traits = EC_predicted, q = 1)
+#func_q2<- hill_func(totutable, traits = EC_predicted, q = 2)
+
+#func_q0_KO<- hill_func(totutable, traits = KO_predicted, q = 0)
+#func_q1_KO<- hill_func(totutable, traits = KO_predicted, q = 1)
+#func_q2_KO<- hill_func(totutable, traits = KO_predicted, q = 2)
+
+#write.table(t(func_q0), file="../Data/func_q0.txt", sep="\t")
+#write.table(t(func_q2_KO), file="../Data/func_q2_KO.txt", sep="\t")
+
+```
+
+### Plotting functional diversity
+
+```{r}
+
+func_q0<- t(read.delim("../Data/func_q0.txt"))
+func_q1<- t(read.delim("../Data/func_q1.txt"))
+func_q2<- t(read.delim("../Data/func_q2.txt"))
+Alpha.t_asv_table<- read.csv("../Data/Alpha-t_otu_table.txt.csv", check.names = F, row.names = 1)
+
+
+funct_q0<-t(func_q0)
+funct_q1<-t(func_q1)
+funct_q2<-t(func_q2)
+
+FD_q0<- merge(Alpha.t_asv_table, funct_q0, by=0)
+FD_q1<- merge(Alpha.t_asv_table, funct_q1, by=0)
+FD_q2<- merge(Alpha.t_asv_table, funct_q2, by=0)
+
+
+plotmeans(Q~Practice, FD_q0, connect=F)
+plotmeans(Q~Soil, FD_q0, connect=F)
+plotmeans(Q~Stage, FD_q1, connect=F)
+plotmeans(Q~Practice, FD_q0, connect=F)
+plotmeans(FD_q~Stage, FD_q1, connect=F)
+plotmeans(D_q~Soil, FD_q0, connect=F)
+plotmeans(D_q~Soil, FD_q1, connect=F)
+plotmeans(D_q~Soil, FD_q2, connect=F)
+
+
+```
+
+### General linear model of functional diversity
+
+```{r, fig.height = 10, fig.width = 10, fig.align = "center"}
+
+func_MDq<- read.delim("../Data/func_MDq.txt", check.names = F, row.names = 1)
+  
+a<-lme(FD_q~Practice.Location*Stage, random=~1 |Plot, FD_q2)%>%PermTest
+summary(a)
+
+
+b<-lme(FD_q~Soil, random=~1 |Plot, FD_q2)
+summary(b)
+
+c<- lme(FD_q~Stage, random=~1 |Plot, FD_q2)%>%
+PermTest
+
+
+O<-ggplot(func_MDq, aes(x=Practice, y=MD_q0, fill=Soil))+
+  geom_boxplot()
+  
+
+I<-ggplot(FD_q1, aes(x=Practice, y=MD_q, fill=Soil))+
+  geom_boxplot()
+
+II<- ggplot(FD_q2, aes(x=Practice, y=MD_q, fill=Soil))+
+  geom_boxplot()
+  
+Os<-ggplot(FD_q0, aes(x=Soil, y=MD_q, fill=Stage))+
+  geom_boxplot()
+
+Is<-ggplot(FD_q1, aes(x=Soil, y=MD_q, fill=Stage))+
+  geom_boxplot()
+
+IIs<- ggplot(FD_q2, aes(x=Soil, y=MD_q, fill=Stage))+
+  geom_boxplot()
+
+Oss<-ggplot(FD_q0, aes(x=Practice.Location, y=MD_q, fill=Stage))+
+  geom_boxplot()
+
+Iss<-ggplot(FD_q1, aes(x=Practice.Location, y=MD_q, fill=Stage))+
+  geom_boxplot()
+
+IIss<- ggplot(FD_q2, aes(x=Practice.Location, y=MD_q, fill=Stage))+
+  geom_boxplot()
+
+r<-plot_grid(O, I, II, Os, Is, IIs, Oss, Iss, IIss, 
+          labels = "AUTO", 
+          label_size = 17, nrow=3, ncol = 3)
+r
+
+#pdf("FigX_FUNDIV-interactions.pdf", width=10, height=8)
+#print(r)
+#dev.off()
+
+```
+
+Plot S3
+
+```{r, warning=FALSE, message=FALSE, fig.height = 18, fig.width = 16, fig.align = "center"}
+
+library(ggpubr)
+library(cowplot)
+func_MDq <- read.delim("../Data/func_MDq.txt", row.names=1)
+
+F0.p <- ggboxplot(data = func_MDq, x = "Practice", y= "MD_q0",
+                fill= "Practice", palette = c("#212F3D", "#839192"), 
+                width = 0.6, lwd=0.8, facet.by = "Stage")  +
+    labs(x = element_blank(), y = "Mean functional diversity")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+F1.p <- ggboxplot(data = func_MDq, x = "Practice", y= "MD_q1",
+                  fill = "Practice", palette = c("#212F3D", "#839192"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Mean functional diversity")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+F2.p <- ggboxplot(data = func_MDq, x = "Practice", y= "MD_q2",
+                  fill = "Practice", palette = c("#212F3D", "#839192"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Mean functional diversity")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+        
+F0.s <- ggboxplot(data = func_MDq, x = "Soil", y= "MD_q0",
+                  fill = "Soil", palette = c("darkgoldenrod4", "#365238"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Mean functional diversity")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+F1.s <- ggboxplot(data = func_MDq, x = "Soil", y= "MD_q1",
+                  fill = "Soil", palette = c("darkgoldenrod4", "#365238"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Mean functional diversity")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+F2.s <- ggboxplot(data = func_MDq, x = "Soil", y= "MD_q2",
+                  fill = "Soil", palette = c("darkgoldenrod4", "#365238"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Mean functional diversity")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+
+div <- read.delim("../Data/Alpha-t_asv_table.txt", row.names=1)
+
+D0.p <- ggboxplot(data = div, x = "Practice", y= "q0",
+                  fill = "Practice", palette = c("#212F3D", "#839192"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Effective number of OTUs")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+D1.p <- ggboxplot(data = div, x = "Practice", y= "q1",
+                  fill = "Practice", palette = c("#212F3D", "#839192"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Effective number of OTUs")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+
+D2.p <- ggboxplot(data = div, x = "Practice", y= "q2",
+                  fill = "Practice", palette = c("#212F3D", "#839192"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Effective number of OTUs")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+
+D0.s <- ggboxplot(data = div, x = "Soil", y= "q0",
+                  fill = "Soil", palette = c("darkgoldenrod4", "#365238"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Effective number of OTUs")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+D1.s <- ggboxplot(data = div, x = "Soil", y= "q1",
+                  fill = "Soil", palette = c("darkgoldenrod4", "#365238"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Effective number of OTUs")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+
+D2.s <- ggboxplot(data = div, x = "Soil", y= "q2",
+                  fill = "Soil", palette = c("darkgoldenrod4", "#365238"), 
+                  width = 0.6, lwd=0.8, facet.by = "Stage")  +
+  labs(x = element_blank(), y = "Effective number of OTUs")+
+  theme_gray() +
+  theme(text = element_text (size = 12))+
+  theme(legend.position = "none")+
+  theme(plot.title = element_text("q=0"))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank())+
+  stat_compare_means(method = "t.test")
+
+
+r<-plot_grid(D0.p, D1.p,D2.p,D0.s,D1.s,D2.s, F0.p, F1.p,F2.p,F0.s,F1.s,F2.s, 
+             labels = "AUTO", 
+             label_size = 17, nrow=4, ncol = 3)
+r
+#pdf("FigS3_Div_block_by_stage.pdf", width=16, height=18)
+#print(r)
+#dev.off()
+```

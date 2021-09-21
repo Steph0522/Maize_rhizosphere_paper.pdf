@@ -1,0 +1,37 @@
+---
+title: |
+  Scripts: Bacterial communities in the rhizosphere at different growth stages of maize cultivated in soil under conventional and conservation agricultural practices
+type: ARTICLE TEMPLATE
+author:
+    - Yendi E. Navarro-Noya, Centro Tlaxcala de Biología de la Conducta, UATx
+    - Stephanie Hereira-Pacheco,Laboratory of Soil Ecology, CINVESTAV-IPN, México
+bibliography: references.bib
+header-includes: |
+  \usepackage{hyperref}
+  \usepackage[utf8]{inputenc}
+  \def\tightlist{}
+output: pdf_document
+---
+```{r child = 'qiime2_scripts.Rmd'}
+```
+
+```{r child = 'Alpha_Functionality.Rmd'}
+```
+
+```{r child = 'Beta_Diversity_plot.Rmd'}
+```
+
+```{r child = 'Soil_Plot.Rmd'}
+```
+
+```{r child = 'Treatment_Plot.Rmd'}
+```
+
+```{r child = 'Stage_Plot.Rmd'}
+```
+
+```{r child = 'Picrust_Plot.Rmd'}
+```
+
+```{r child = 'Picrust2_Plot.Rmd'}
+```

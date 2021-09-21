@@ -1,0 +1,354 @@
+---
+title: "Treatment_Plot"
+author:
+- name: Yendi E. Navarro-Noya
+  affiliation: Laboratory of Biotic Interactions, Centro de Investigación en Ciencias
+    Biológicas, Universidad Autónoma de Tlaxcala, Tlaxcala, Mexico
+  email: yendiebenezer.navarro.n@uatx.mx
+- name: Stephanie Hereira-Pacheco
+  affiliation: Laboratory of Soil Ecology, CINVESTAV-IPN, Ciudad de México, Mexico
+  email: shereirap@gmail.com
+date: "`r format(Sys.time(), '%d - %m - %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    df_print: paged
+---
+
+# V. TREATMENT FIGURE
+
+### Loading libraries
+
+```{r, warning=F, message=F}
+library(cowplot)
+library(tidyverse)
+library(ggpubr)
+library(ComplexHeatmap)
+library(circlize)
+library(viridis)
+library(RColorBrewer)
+library(grid)
+library(CoDaSeq)
+library(ggplot2)
+require(compositions) # exploratory d ata analysis of compositional data
+require(zCompositions) # used for 0 substitution
+require(ALDEx2) # used for per-OTU comparisons
+library(CoDaSeq)
+library(ggrepel)
+
+
+```
+
+### Loadings files and Barplot Text annotations
+
+```{r}
+
+alpha<- read.table("../Data/alpha_diversity") %>% gather(
+  q0:q4, key = "q", value = "value") %>% filter(
+    q %in% c("q0", "q1", "q2"))%>%mutate(qs= case_when(
+  str_detect(q, "q0") ~ "q=0 (species richness)",
+  str_detect(q, "q1") ~ "q=1 (frequent species)",
+  str_detect(q, "q2") ~ "q=2 (dominant species)"))
+head(alpha)
+
+func<- read.table("../Data/func_MDq.txt") %>% gather(
+  MD_q0:MD_q2, key = "q", value = "value")%>%mutate(fs= case_when(
+  str_detect(q, "q0") ~ "q=0 (species richness)",
+  str_detect(q, "q1") ~ "q=1 (frequent species)",
+  str_detect(q, "q2") ~ "q=2 (dominant species)"))
+head(func) 
+
+#df with the p values to show in the figures
+ann_text<-data.frame(Practice=c("CA", "CA", "CA"),value=c(800,350,150),
+qs=c("q=0 (species richness)","q=1 (frequent species)",
+"q=2 (dominant species)"),label=c("p=0.009","p=0.002", "p=0.011")) 
+#tittles and positiong in y axis
+
+ann_text_f<-data.frame(Practice=c("BS", "BS", "BS"),value=c(60000,30000,10000),
+fs=c("q=0 (species richness)","q=1 (frequent species)",
+"q=2 (dominant species)"),label=c("p=0.059","p=0.015", "p=0.026"))
+#tittles and positiong in y axis
+
+
+
+
+```
+
+### Barplots alpha and functional diversity
+
+```{r, fig.height = 5, fig.width = 2.7, fig.align = "center"}
+#Alpha diversity barplot soil
+boxplot_practice<-alpha %>% 
+  ggbarplot(x="qs", y="value", fill = "Practice", add = "mean_se", 
+            position = position_dodge())+
+  theme_bw()+
+  labs(y = "Effective number of ASVs")+
+  facet_wrap(~qs, scales = "free", dir = "v")+
+  theme(panel.spacing=unit(1,"lines"),
+        strip.text.x = element_text(size = 10),
+        axis.text =  element_text(colour = "black", size = 10),
+        axis.ticks.x=element_blank(), 
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size=14), 
+        axis.text.x = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.direction = "horizontal" ,
+        legend.position = "top")+scale_fill_manual(values = c("#212F3D", "#839192"))+ labs(fill = "Practice")
+
+boxplot_practice<-boxplot_practice +  geom_text(data = ann_text,label=ann_text$label)
+
+boxplot_practice
+
+#boxplot
+boxplot_practice_f<-func %>% 
+  ggbarplot(x="fs", y="value", fill = "Practice", add = "mean_se", 
+            position = position_dodge())+
+  theme_bw()+
+  labs(y = "Mean functional diversity")+
+  facet_wrap(~fs, scales = "free", dir = "v")+
+  theme(panel.spacing=unit(1,"lines"),
+        strip.text.x = element_text(size = 10),
+        axis.text =  element_text(colour = "black", size = 10),
+        axis.ticks.x=element_blank(), 
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size=14), 
+        axis.text.x = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.direction = "horizontal" ,
+        legend.position = "top")+scale_fill_manual(values = c("#212F3D", "#839192"))+ labs(fill = "Practice")
+
+boxplot_practice_f<-boxplot_practice_f +  geom_text(data = ann_text_f,label=ann_text_f$label)
+
+boxplot_practice_f
+
+#pdf("fig_alpha_practice.pdf", width=2.7, height=5)
+#print(boxplot_practice)
+#dev.off()
+#pdf("fig_func_practice.pdf", width=2.7, height=5)
+#print(boxplot_practice_f)
+#dev.off()
+
+```
+
+### Aldex results heatmap from Soil
+
+```{r, fig.height = 8, fig.width = 6, fig.align = "center", warning=FALSE, message=FALSE}
+
+#file to heatmap
+aldex_all_dif<- read_tsv("../Data/aldex_treatment.tsv")
+
+my_fun <- function(x) { 
+  x %>% separate(
+    "Taxon", c("k", "phylum","c", "o","f","g"),
+    sep = "\\;", remove = F) %>% dplyr::select(
+      Taxon, p.value, effect, diff.btw, rab.win.0, rab.win.1, phylum, 
+      "FeatureID"="Feature.ID" )%>% 
+    drop_na(.)%>% 
+    rownames_to_column(var="rows")%>%       
+    mutate_all(funs(str_replace(., "k__Bacteria;", "")))%>%
+    mutate_all(funs(str_replace(., "; c__; o__; f__; g__; s__", "")))%>% 
+    mutate_all(funs(str_replace(., "; o__; f__; g__; s__", "")))%>% 
+    mutate_all(funs(str_replace(., "; f__; g__; s__", "")))%>%
+    mutate_all(funs(str_replace(., "; g__; s__", "")))%>%
+    mutate_all(funs(str_replace(., "; s__", "")))%>%mutate(
+      tax= str_extract(Taxon, "[^_]+$")) %>%mutate(
+        taxo = paste(rows,"_",tax))%>% mutate_at(
+          c(3:7), as.numeric) %>%
+    mutate_at(c(3), funs(p.Value = case_when(
+      . <= 0.001 ~ "<0.001",
+      . >  0.001 & .  <= 0.01 ~ "<0.01",
+      . >  0.01 & .  <= 0.05 ~ "<0.05")))%>%
+    arrange(diff.btw)%>%column_to_rownames(
+      var = "taxo")%>% mutate_at(c(8),funs(str_replace(., "p__", "")))
+}
+#We are going to multiplicate for -1 in order to change 
+#the direction of the figure (e.g, bulk soil first and then rhizosphere)
+
+annotation_heatmap <- my_fun(aldex_all_dif) %>% 
+  rename(rab.win.CA = rab.win.0, rab.win.CP = rab.win.1) %>% 
+  mutate(taxo= paste(rows,tax, sep = "_"))
+data_heatmap<- annotation_heatmap%>%dplyr::select(rab.win.CA, rab.win.CP)
+
+color_heatmap= colorRamp2(seq(min(data_heatmap), max(data_heatmap), length = 5), 
+                          c("#0000FF","#5499C7", "#DAE7E4",  "red", "#FF0000"))
+
+
+#Annotation Phylum
+cols_ann <- list('phylum' = c(
+  " Acidobacteria" = 'red2',
+  " Actinobacteria" = 'royalblue',
+  " Bacteroidetes"="yellow",
+  " Chloroflexi" ="pink",
+  " Firmicutes"= "green",
+  " Gemmatimonadetes" = "black",
+  " Nitrospirae" ="purple",
+  " Planctomycetes" ="dark green",
+  " Proteobacteria"  ="gray",
+  " Verrucomicrobia" ="brown"))
+colAnn <- HeatmapAnnotation(phylum = annotation_heatmap$phylum,
+                            which = 'row',
+                            col = cols_ann,
+                            show_legend = T)
+
+cols_pvalue <- list('p-value' = c("<0.001" = '#AB0000',
+                                  "<0.01" = '#FF0000',
+                                  "<0.05"="#FFB6B6"))
+
+annP2 = HeatmapAnnotation("p-value" = annotation_heatmap$p.Value,
+                          which = "row", col = cols_pvalue,
+                          show_legend = T)#, gp = gpar(col = "white"))
+
+
+#Annotation effect size
+effect_col_fun =colorRamp2(c(-1.5, 0, 1.5), c("lightsalmon4", "white", "lightseagreen"))
+
+annEffect = HeatmapAnnotation("effect-size" = annotation_heatmap$effect,
+                              which = "row", col = list("effect-size" = effect_col_fun),
+                              show_legend = T, 
+                              gp = gpar(col = "white"))
+
+#Annotation barplot
+bardif= rowAnnotation("difference \n between groups" = anno_barplot(
+  annotation_heatmap$diff.btw, width = unit(4, "cm")))
+
+
+#Annotation taxonomy
+
+labels = c("Ellin6075", "SC-I-84", "", "iii1-15" ,  "Gemm-1","", 
+"Rhizobiales" , "Ellin5301",  "Xanthomonadaceae"  , 
+"Cytophagaceae" ,"iii1-15", "" ,"Flavisolibacter" , "iii1-15", "Chitinophagaceae",
+"Acidobacteria-6",  "Chitinophagaceae", "iii1-15" , "iii1-15", "OR-59", "Ellin6075", 
+"Microbacteriaceae","Nitrospira" ,"Chitinophagaceae","Ellin5290",  "","Ellin6529" ,
+"Flavobacterium"  , "Cytophagaceae", "Chitinophagaceae","Xanthomonadaceae" ,"Chitinophagaceae", 
+"OR-59",  "Chitinophagaceae"  ,  "Chitinophagaceae" ,"mb2424", 
+"Xanthomonadaceae", "Chitinophagaceae"  ,  "iii1-15","Chitinophagaceae" ,""  , "Xanthomonadaceae",
+"[Chthoniobacteraceae]",  "C111"  ,  "iii1-15"  , "Flavisolibacter",  "",  "[Chthoniobacteraceae]" ,
+"", "" ,"Micromonosporaceae" , "Rhizobiales"  , "WD2101" , "iii1-15" ,  
+"Flavobacterium", rep("", 11), "Roseococcus"  , "Comamonadaceae" ,  "Chitinophagaceae" ,  
+"Chitinophagaceae" ,"DA-101" ,  "", "WD2101" , ""  ,"WD2101", 
+"Oxalobacteraceae", "Ellin5301",  "iii1-15","iii1-15" ,"Ellin5290" , "" ,
+"" , "", "Flavisolibacter","Oxalobacteraceae", "RB41","iii1-15") 
+
+heatmap_aldex_treatment<-ComplexHeatmap::  Heatmap(data_heatmap, col = color_heatmap, row_dend_reorder = F, width = ncol(data_heatmap)*unit(1, "cm"),
+height = ncol(data_heatmap)*unit(8, "cm"),
+left_annotation =  c(annP2, annEffect, colAnn),
+cluster_column_slices = F,
+ heatmap_legend_param = list(direction = "horizontal" ),
+right_annotation = c(bardif),
+column_split = rep(c("CA", "CP")),
+cluster_rows = F,
+cluster_columns = F,
+column_km = 1, column_title_gp = gpar(
+fill = c("#212F3D", "#839192" ), col="white"),
+border = F, column_gap = unit(0.5, "mm"), 
+row_dend_side = "left",row_names_side = "right",
+show_row_names = F ,rect_gp = gpar(col = "white", lwd = 0.2), 
+row_names_gp = gpar(fontface ="italic", fontsize=10),
+show_column_names = F, name = "rab.Win") + 
+rowAnnotation(labels = anno_text(labels, which = "row", gpar(
+  col = "black", fontsize = 6)), width = unit(2, "cm"))
+
+heatmap_aldex_treatment
+
+#pdf("fig_aldex_TREATMENT.pdf", width=6, height=8)
+#print(heatmap_aldex_treatment)
+#dev.off()
+```
+
+### PCA plot
+
+```{r, fig.height = 5, fig.width = 5, fig.align = "center", warning=FALSE, message=FALSE}
+#loading files and formatting
+
+d.pro.0<- read_tsv("../Data/otutable.tsv")%>% column_to_rownames(var = "#OTU ID")
+meta<-read_tsv("../Data/metadata.tsv")
+
+meta$Treatment<- factor(meta$Treatment,
+                       levels = c( "AC", "AT"),
+                       labels = c("CA", "CP"))
+
+tax<-read_tsv("../Data/taxonomy.tsv") %>% dplyr::select(-Confidence)%>%
+  mutate_all(funs(str_replace(., "k__Bacteria;", "")))%>% 
+  mutate_all(funs(str_replace(., "p__", "")))%>% 
+  mutate_all(funs(str_replace(., "c__", "")))%>% 
+  mutate_all(funs(str_replace(., "o__", "")))%>% 
+  mutate_all(funs(str_replace(., "f__", "")))%>% 
+  mutate_all(funs(str_replace(., "g__", "")))%>% 
+  mutate_all(funs(str_replace(., "s__", "")))%>% 
+  mutate_all(funs(str_replace(., "; ; ;", "")))%>% 
+  mutate_all(funs(str_replace(., "; ; ", ""))) %>% rename(
+    "FeatureID"=`#OTU ID`, Taxon= taxonomy)
+
+tax2<- read_tsv("../Data/taxonomy.tsv") %>% dplyr::select(
+  -Confidence) %>% rename(
+    "FeatureID"=`#OTU ID`, Taxon= taxonomy)
+
+
+#transforming data
+d.pro <- cmultRepl(t(d.pro.0), method="CZM", output="p-counts")
+d.clr.abund.codaseq<-codaSeq.clr(x = d.pro,samples.by.row = F)
+
+#run pca
+pcx.abund <- prcomp(d.clr.abund.codaseq)
+
+#labels to pca axis
+
+PC1 <- paste("PC1", round(sum(pcx.abund$sdev[1] ^ 2) / mvar(d.clr.abund.codaseq) * 100, 1), "%")
+PC2 <- paste("P21", round(sum(pcx.abund$sdev[2] ^ 2) / mvar(d.clr.abund.codaseq) * 100, 1), "%")
+
+
+#let's choose som of the significant groups from aldex analysis 
+
+vars_chosen<- c("52_Flavisolibacter", 
+                "37_OR-59",
+                "47_Nitrospira" , 
+                "16_Halomonas", 
+                "29_Flavobacterium",
+                "	27_Steroidobacter" , 
+                "36_Roseococcus") 
+#these ones were chosen from before (some aldex significant groups)
+#these ones were chosen from before (some aldex significant groups)
+
+vars_to_choose<- annotation_heatmap %>%  filter(taxo %in% vars_chosen)
+
+vars_choosing<- data.frame(pcx.abund$rotation) %>%  rownames_to_column(var = "FeatureID")%>%   
+  mutate(a=sqrt(PC1^2+PC2^2)) %>%
+  mutate(PC1=PC1*500, PC2=PC2*500) %>% left_join(tax2)%>% dplyr::select(
+    Taxon, PC1, PC2, FeatureID)%>%right_join(vars_to_choose, by = "FeatureID")
+
+#pca plot
+pca_treatment_arrows<- ggplot() +
+  theme_bw() +
+  xlab(PC1) +
+  ylab(PC2) +
+  theme(axis.text = element_text(colour = "black", size = 14),#setiing theme
+        axis.title = element_text(colour = "black", size = 14),
+        legend.text = element_text(size = 14),
+        legend.title = element_blank(), 
+        legend.position = "bottom") +
+  geom_point(                              #individuals
+    data=data.frame(pcx.abund$x) %>%   rownames_to_column(var = "SampleID")%>%
+      left_join(meta, by = "SampleID"),
+    aes(x=PC1, y=PC2, fill=Treatment), 
+    shape=21, size=4) + 
+  geom_vline(xintercept = 0, linetype = 2) +   #lines-cross
+  geom_hline(yintercept = 0, linetype = 2) +
+  scale_fill_manual(values = c("#212F3D","#839192"))+
+  ggrepel::geom_label_repel(data = vars_choosing, aes(x=PC1, y=PC2, label= tax),
+                            segment.colour = NA, box.padding = 2, fontface="italic")+
+  geom_segment(data = vars_choosing, aes(x=0, y=0, xend=PC1, yend=PC2), 
+               arrow=arrow(length=unit(0.15,"cm")),
+               size= 0.6)
+
+pca_treatment_arrows
+
+
+#pdf("fig_pca_treatment.pdf", width=5, height=5)
+#print(pca_treatment_arrows)
+#dev.off()
+
+```

@@ -1,0 +1,311 @@
+---
+title: "QIIME2"
+author:
+- name: Yendi E. Navarro-Noya
+  affiliation: Laboratory of Biotic Interactions, Centro de Investigación en Ciencias
+    Biológicas, Universidad Autónoma de Tlaxcala, Tlaxcala, Mexico
+  email: yendiebenezer.navarro.n@uatx.mx
+- name: Stephanie Hereira-Pacheco
+  affiliation: Laboratory of Soil Ecology, CINVESTAV-IPN, Ciudad de México, Mexico
+  email: shereirap@gmail.com
+date: "`r format(Sys.time(), '%d - %m - %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    df_print: paged
+bibliography: references.bib
+---
+
+# I. QIIME2 AND PICRUST2 SCRIPTS
+
+**Raw sequences were import to QIIME2 [@bolyen2019] workflow and then PICRUST2 [@douglas2020] was done to predict funcionality.**
+
+### IMPORT TO QIIME AND DEMULTIPLEX SEQUENCES
+
+``` {.bash}
+qiime tools import --type EMPPairedEndSequences \
+--input-path barcode_extracted/ \
+--output-path yen.qza
+```
+
+--type : type of file , in this case paired end sequences. Check other import types[^1].
+
+[^1]: <https://docs.qiime2.org/2021.4/tutorials/importing/>
+
+--input-path: directory with the files to import
+
+--output-path: artifact name output
+
+**And then, we perform the demultiplexing:**
+
+``` {.bash}
+qiime demux emp-paired  \
+--i-seqs yen.qza \
+--m-barcodes-file Map_rhizos.txt \
+--m-barcodes-column BarcodeSequence \
+--o-per-sample-sequences demux.qza \
+--o-error-correction-details errordetails.qza \
+--p-no-golay-error-correction 
+```
+
+--i-seqs : artifact with the import paired end sequences
+
+--m-barcodes-file : mapping file containing information of the sequences
+
+--m-barcodes-column: column name of the Barcode sequences
+
+--o-per-sample-sequences : output of the sequences demultiplexed
+
+--o-error-correction-details: file with correction details
+
+--p-no-golay-error-correction: by default perform a correction with a barcode of 12 nt if not use this option (in our case is 16 nt)
+
+**To visualice the demux file:**
+
+``` {.bash}
+qiime demux summarize 
+--i-data demux.qza \ 
+--o-visualization  demux.qzv
+```
+
+--i-data : demultiplexed and/or trimmed sequences
+
+--o-visualization : output
+
+**In this case, due to de the low quality of reverse reads we will continue with the forward sequences and let's set the truncation length of 120 bp for forward reads.**
+
+### RUN DADA2
+
+``` {.bash}
+qiime dada2 denoise-single \
+--i-demultiplexed-seqs ../demultiplex/demux_yen.qza \
+--p-trim-left 0 --p-trunc-len 120 \
+--o-representative-sequences rep-seq-dada-forward.qza \
+--o-table table-dada-forward.qza \
+--o-denoising-stats stats-dada-forward.qza 
+```
+
+--i-demultiplexed-seqs : demultiplexed and trimmed sequences
+
+-p-trunc-len-f : length to trunc in forward sequences sequences to obtain good quality (usually when sequencing drops)
+
+-p-trunc-len-r : length to trunc in resverse sequences sequences to obtain good quality (usually when sequencing drops)
+
+--output-dir : output directory that will contain feature-table and representative sequences
+
+### FILTERING FORM ALIGNMENT (REMOVE UNASSINGED BASED ON GREEN GENES DATABASE)
+
+**First, we do the alignment against the green genes database:**
+
+``` {.bash .bahs}
+qiime quality-control exclude-seqs \
+--i-query-sequences rep-seq-dada-forward.qza \
+--i-reference-sequences ../references/99_otus.qza \
+--p-method vsearch \
+--p-perc-identity 0.97 \
+--p-perc-query-aligned 0.95 \
+--p-threads 4 \
+--o-sequence-hits hits.qza \
+--o-sequence-misses misses.qza
+```
+
+--i-query-sequences : representative sequences obtained from dada2
+
+--i-reference-sequences : reference sequences imported to qiime2
+
+--p-method : alignment method
+
+--p-perc-identity : identity percent
+
+--p-perc-query-aligned : query aligned percent
+
+--p-threads : number of threads
+
+--o-sequence-hits : output with hits sequences
+
+--o-sequence-misses : output with misses sequences (not aligned)
+
+**Now, filter the feature table to remove this misses sequences:**
+
+``` {.bash}
+qiime feature-table filter-features \
+--i-table table-dada-forward.qza \
+--m-metadata-file misses.qza \
+--o-filtered-table no-misses-table.qza  \
+--p-exclude-ids
+```
+
+--i-table : feature table from dada2
+
+--m-metadata-file : metadata mapping file
+
+--o-filtered-table : filtered table
+
+--p-exclude-ids : argument to exclude the ids from 'misses' file
+
+### ASSIGN TAXONOMY
+
+``` {.bash}
+qiime feature-classifier classify-sklearn \
+--i-reads rep-seq-dada_forward.qza \
+--i-classifier /home/steph/Descargas/gg-13-8-99-nb-classifier.qza \
+--o-classification taxonomy.qza
+```
+
+cclassify-sklearn : using sklearn (other options are vsearch and blast)
+
+--i-reads : seqs merged
+
+--i-classifier: artifact classifier full-length (<https://docs.qiime2.org/2021.4/data-resources/>)
+
+--o-classification output artifact with taxonomy
+
+### FILTERING TABLE
+
+-   **Removing taxa of chloroplast and mitochondria**
+
+``` {.bash}
+qiime taxa filter-table
+--i-table no-misses-table.qza
+--i-taxonomy taxonomy.qza
+--p-exclude mitochondria,chloroplast 
+--o-filtered-table table_filtered.qza
+```
+
+--i-table : merge table
+
+--i-taxonomy : taxonomy (from assign taxonomy)
+
+--p-exclude : taxa to exclude
+
+--o-filtered-table : output/artifact
+
+-   **Visualizing the taxonomy in a barplot**
+
+``` {.bash}
+qiime taxa barplot --i-table table_filtered.qza \
+--i-taxonomy taxonomy.qza \
+--m-metadata-file Map_rhizos.txt \
+--o-visualization taxa_barplot.qzv
+
+
+qiime tools view taxa-barplot.qzv
+```
+
+--i-table : input table
+
+--m-metadata-file : mapping file
+
+--i-taxonomy : taxonomy
+
+--o-visualization: .qzv of barplot
+
+### FILTERING SEQUENCES
+
+**For this step we will filter the representative sequences base on the table filtered.**
+
+``` {.bash}
+qiime feature-table filter-seqs \
+--i-data rep-seq-dada-forward.qza \
+--i-table table_filtered.qza \
+--o-filtered-data rep-seqs-filter-exclude.qza 
+```
+
+--i-data : input sequences
+
+--i-table : input table use to filter
+
+--o-filtered-data : output/filtered sequences
+
+### BUILDING THE TREE
+
+**For this step we will build the phylogenetic tree *denovo.***
+
+``` {.bash}
+qiime phylogeny align-to-tree-mafft-fasttree \
+--i-sequences rep-seqs-filter-exclude.qza \
+–output-dir tree/
+```
+
+--i-sequences : sequences filtered
+
+--output-dir : output director that will contain the alignment, masked alignment, the tree and the rooted treed.
+
+### EXPORTING SEQUENCES, TABLE AND TAXONOMY
+
+``` {.bash}
+#export sequences
+qiime tools export \
+--input-path rep-seqs-filter-exclude.qza \
+--output-path exported
+
+#expor the feature table
+qiime tools export \
+--input-path .table_filtered.qza \
+--output-path exported/
+
+#export the taxonomy
+qiime tools export \
+--input-path taxonomy.qza \
+--output-path exported/
+
+#join the feature table and taxonomy
+biom add-metadata \
+-i exported/feature-table_grouped.biom \
+--observation-metadata-fp  exported/taxonomy.tsv \
+-o otutable_with_taxonomy.biom
+
+#convert biom to tsv to check the otutable (feature-table)
+biom convert -i otutable_with_taxonomy.biom
+-o otutable.txt --to-tsv --header-key taxonomy
+```
+
+--input-path: artifact to export (table or taxonomy)
+
+--output-path: directory outpur
+
+-i : feature-table in biom format
+
+--observation-metadata-fp : taxonomy file (already changed)
+
+-o: output
+
+--to-tsv --header-key taxonomy : options to convert and add taxonomy to otutable/feature-table
+
+### PICRUST2
+
+``` {.bash}
+picrust2_pipeline.py \
+-s exported/dna-sequences.fasta \
+-i exported/feature-table.biom \
+-o picrust2 
+
+
+add_descriptions.py \
+-i picrust2/EC_metagenome_out/pred_metagenome_unstrat.tsv.gz \
+-m EC -o picrust2/EC_metagenome_out/pred_metagenome_unstrat_descrip.tsv.gz
+
+add_descriptions.py \
+-i picrust2/pathways_out/path_abun_unstrat.tsv.gz \
+-m METACYC -o picrust2/pathways_out/path_abun_unstrat_descrip.tsv.gz
+```
+
+-s : exported sequences from qiime2 in fasta format
+
+-i : exported table from qiime2 in biom format
+
+-o: directory that contains the results (EC, KO, pathways)
+
+In the add_descriptions.py (script to add the descriptions to EC and pathways file):
+
+-i : file output from PICRUST2 pipeline (EC or pathways)
+
+-m METACYC/EC : map type
+
+-o : output file with descriptions
+
+***\*The files obtained from these scripts were imported into R fro downstream analyses.***

@@ -1,0 +1,485 @@
+---
+title: "Picrust_Plot"
+author:
+- name: Yendi E. Navarro-Noya
+  affiliation: Laboratory of Biotic Interactions, Centro de Investigación en Ciencias
+    Biológicas, Universidad Autónoma de Tlaxcala, Tlaxcala, Mexico
+  email: yendiebenezer.navarro.n@uatx.mx
+- name: Stephanie Hereira-Pacheco
+  affiliation: Laboratory of Soil Ecology, CINVESTAV-IPN, Ciudad de México, Mexico
+  email: shereirap@gmail.com
+date: "`r format(Sys.time(), '%d - %m - %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    df_print: paged
+---
+
+# VII. PICRUST PLOT
+
+### Loading libraries
+
+```{r, warning=F, message=F}
+library(ComplexHeatmap)
+library(tidyverse)
+library(circlize)
+library(viridis)
+library(RColorBrewer)
+library(cowplot)
+```
+
+### Setting common annotations to heatmap
+
+```{r, fig.height = 5, fig.width = 2.7, fig.align = "center"}
+levels<- read_tsv( "../Data/levels.tsv")
+
+cols_ann <- list('Superclass' = c(
+  "Alcohol Degradation"="#A6CEE3",
+  "Aldehyde Degradation"="#00FFFF",
+  "Amine and Polyamine Biosynthesis"="#B2DF8A",
+  "Amine and Polyamine Degradation"="#3300CC",
+  "Amino Acid Biosynthesis"="#33A02C",
+  "Amino Acid Degradation"="#99FFFF",
+  "Aminoacyl-tRNA Charging"="#99CC66",
+  "Aromatic Compound Degradation"="#006699",
+  "C1 Compound Utilization and Assimilation"="#6699CC",
+  "Carbohydrate Biosynthesis"="#B3DE69",
+  "Carbohydrate Degradation"="#6699FF",
+  "Carboxylate Degradation"="#0033CC",
+  "Cell Structure Biosynthesis"="#CCEBC5",
+  "Cofactor, Carrier, and Vitamin Biosynthesis"="#66FF00",
+  "Cofactor, Prosthetic Group, Electron Carrier Degradation"="#00CCFF",
+  "Degradation/Utilization/Assimilation"="#666699",
+  "Fatty Acid and Lipid Biosynthesis"="#66CC33",
+  "Fatty Acid and Lipid Degradation"="#000666",
+  "Fermentation"="#CC0000",
+  "Glycolysis"="#993333",
+  "Inorganic Nutrient Metabolism"="#6666FF",
+  "Metabolic Regulator Biosynthesis"="#669933",
+  "Nucleic Acid Processing"="#FFFF00",
+  "Nucleoside and Nucleotide Biosynthesis"="#339933",
+  "Nucleoside and Nucleotide Degradation"="#99CCFF",
+  "Other"="#000000",
+  "Other Biosynthesis"="#069966",
+  "Pentose Phosphate Pathways"="#FF6666",
+  "Polyprenyl Biosynthesis"="#00FF33",
+  "Respiration"="#CC6666",
+  "Secondary Metabolite Biosynthesis"="#99CC00",
+  "Secondary Metabolite Degradation"="#66CCCC",
+  "TCA cycle"="#990033",
+  "Tetrapyrrole Biosynthesis"="#CCFF99"))
+
+cols_pvalue <- list('p-value' = c("<0.001" = '#AB0000',
+                                  "<0.01" = '#FF0000',
+                                  "<0.05"="#FFB6B6"))
+
+effect_col_fun =colorRamp2(c(-1.5, 0, 1.5), c(
+  "lightsalmon4", "white", "lightseagreen"))
+
+
+
+
+```
+
+### Treatment Picrust
+
+```{r, warning=FALSE, message=FALSE, fig.align="center",  fig.width=6, fig.height=12}
+
+aldex_all_dif<- read_tsv( "../Data/aldex_Treatment_picrust.tsv")
+
+annotation_heatmap<- aldex_all_dif%>% left_join(
+  levels, by = c("Feature.ID"="pathway"))%>% dplyr::select(
+  level2, Feature.ID, p.Value, effect, diff.btw) %>% mutate_at(c(
+    3), funs(p.value = case_when(
+    . <= 0.001 ~ "<0.001",
+    . >  0.001 & .  <= 0.01 ~ "<0.01",
+    . >  0.01 & .  <= 0.05 ~ "<0.05")))%>%arrange(
+      diff.btw)%>%column_to_rownames(var = "Feature.ID")
+
+data_heatmap<- aldex_all_dif %>% arrange(diff.btw)%>%column_to_rownames(
+  var = "Feature.ID")%>%dplyr::select(
+    rab.win.CA, rab.win.CP, diff.btw) %>% arrange(diff.btw)
+
+color_heatmap= colorRamp2(seq(min(data_heatmap), max(data_heatmap), length = 5), c(
+  "#0000FF","#5499C7", "#DAE7E4",  "red", "#FF0000"))
+
+colAnn <- HeatmapAnnotation(Superclass = annotation_heatmap$level2,
+                            which = 'row',
+                            col = cols_ann,
+                            show_legend = F)
+
+annP2 = HeatmapAnnotation("p-value" = annotation_heatmap$p.value,
+                          which = "row", col = cols_pvalue,
+                          show_legend = F)
+
+annEffect = HeatmapAnnotation("effect-size" = annotation_heatmap$effect,
+                              which = "row", col = list(
+                              "effect-size" = effect_col_fun),
+                              show_legend = F, 
+                              gp = gpar(col = "white"))
+
+bardif= rowAnnotation(
+  "difference between groups" = anno_barplot(
+    annotation_heatmap$diff.btw, width = unit(4, "cm")))
+
+
+
+ht5<-ComplexHeatmap::Heatmap(
+  data_heatmap[-3],  
+  row_dend_reorder = F, col = color_heatmap,
+  width = ncol(data_heatmap)*unit(0.6, "cm"),
+  height = ncol(data_heatmap)*unit(8, "cm"),
+  left_annotation =  c(annP2, annEffect, colAnn),
+  heatmap_legend_param = list(direction = "vertical" ),
+  right_annotation = c(bardif),
+  cluster_column_slices = FALSE,
+  column_split = rep(c("CA", "CP")),
+  cluster_rows = F,
+  column_km = 1, column_title_gp = gpar(
+  fill = c("#212F3D", "#839192" ), col="white"),
+  border = F, column_gap = unit(0.5, "mm"), 
+  row_dend_side = "left",row_names_side = "right",show_row_names = F ,
+  rect_gp = gpar(col = "white", lwd = 0.2), row_names_gp = gpar(
+  fontface ="italic", fontsize=10),
+  cluster_columns = F,
+  show_column_names = F, name = "rab.Win")
+
+#ht5
+
+ht5.2<-draw(ht5, heatmap_legend_side = "bottom")
+
+#pdf("fig_picrust_TREATMENT2.pdf", width=7, height=20)
+#print(ht5.2)
+#dev.off()
+
+#pdf("fig_picrust_TREATMENT.pdf", width=10, height=10)
+#print(ht5)
+#dev.off()
+
+```
+
+
+### Soil Picrust
+
+```{r, warning=FALSE, message=FALSE, fig.align="center",  fig.width=6, fig.height=12}
+
+aldex_all_dif<- read_tsv( "../Data/aldex_Soil_picrust.tsv")
+
+annotation_heatmap<- aldex_all_dif%>% left_join(levels, by = c(
+  "Feature.ID"="pathway"))%>% dplyr::select(
+  level2, Feature.ID, p.Value, effect, diff.btw, rab.win.Rh, rab.win.Bs )%>% mutate_at(
+    c(3), funs(p.value = case_when(
+    . <= 0.001 ~ "<0.001",
+    . >  0.001 & .  <= 0.01 ~ "<0.01",
+    . >  0.01 & .  <= 0.05 ~ "<0.05")))%>% mutate(
+      diff.btw2 = diff.btw*-1, effect2 = effect*-1 ) %>% arrange(
+      diff.btw2)%>%column_to_rownames(var = "Feature.ID")
+
+data_heatmap<- annotation_heatmap%>%dplyr::select(
+  rab.win.Bs, rab.win.Rh, diff.btw2 ) %>% arrange(
+    diff.btw2)
+
+color_heatmap= colorRamp2(
+  seq(min(data_heatmap), max(data_heatmap), 
+  length = 5), c("#0000FF","#5499C7", "#DAE7E4",  "red", "#FF0000"))
+
+
+colAnn <- HeatmapAnnotation(Superclass = annotation_heatmap$level2,
+                            which = 'row',
+                            col = cols_ann,
+                            show_legend = F)
+
+annP2 = HeatmapAnnotation("p-value" = annotation_heatmap$p.value,
+                          which = "row", col = cols_pvalue,
+                          show_legend = F)
+
+annEffect = HeatmapAnnotation("effect-size" = annotation_heatmap$effect,
+                              which = "row", col = list(
+                              "effect-size" = effect_col_fun),
+                              show_legend = F, 
+                              gp = gpar(col = "white"))
+
+bardif= rowAnnotation(
+  "difference between groups" = anno_barplot(
+    annotation_heatmap$diff.btw, width = unit(4, "cm")))
+
+
+
+
+ht4<-ComplexHeatmap::Heatmap(
+  data_heatmap[-3],  row_dend_reorder = F, col = color_heatmap,
+  width = ncol(data_heatmap)*unit(0.6, "cm"),
+  height = ncol(data_heatmap)*unit(8, "cm"),
+  left_annotation =  c(annP2, annEffect, colAnn),
+  heatmap_legend_param = list(direction = "vertical" ),
+  right_annotation = c(bardif),
+  cluster_column_slices = FALSE,
+  column_split = rep(c("BS", "Rh")),
+  show_heatmap_legend = T,
+  cluster_rows = F,
+  column_km = 1, column_title_gp = gpar(
+  fill = c("darkgoldenrod4", "#365238" ), col="white"),
+  border = F, column_gap = unit(0.5, "mm"),
+  row_dend_side = "left",row_names_side = "right",show_row_names = F ,
+  rect_gp = gpar(col = "white", lwd = 0.2), row_names_gp = gpar(
+  fontface ="italic", fontsize=10),
+  cluster_columns = F,
+  show_column_names = F, name = "rab.Win")
+
+ht4.2<-draw(ht4, heatmap_legend_side = "bottom")
+#pdf("fig_picrust_soil2.pdf", width=7, height=20)
+#print(ht4.2)
+#dev.off()
+
+#pdf("fig_picrust_soil.pdf", width=10, height=10)
+#print(ht4)
+#dev.off()
+```
+
+### Stage Picrust
+
+#### Vegetative vs Flowering
+
+```{r, warning=FALSE, message=FALSE, fig.align="center",  fig.width=6, fig.height=16}
+# VvsF
+aldex_all_dif<- read_tsv( "../Data/aldex_Stage_vvsf_picrust.tsv")
+
+
+#contruct heatmap
+annotation_heatmap<- aldex_all_dif%>% left_join(
+  levels, by = c("Feature.ID"="pathway"))%>% dplyr::select(
+  level2, Feature.ID, p.Value, effect, diff.btw) %>% mutate_at(c(3), funs(
+    p.value = case_when(
+    . <= 0.001 ~ "<0.001",
+    . >  0.001 & .  <= 0.01 ~ "<0.01",
+    . >  0.01 & .  <= 0.05 ~ "<0.05")))%>%arrange(
+      diff.btw)%>%column_to_rownames(var = "Feature.ID")
+
+data_heatmap<- aldex_all_dif %>% arrange(
+  diff.btw)%>%column_to_rownames(
+var = "Feature.ID")%>%dplyr::select(
+  rab.win.0, rab.win.1, diff.btw) %>% rename(
+  Ve=rab.win.0 , Fl=rab.win.1) %>% arrange(diff.btw)
+
+colAnn <- HeatmapAnnotation(
+  Superclass = annotation_heatmap$level2,
+                            which = 'row',
+                            col = cols_ann,
+                            show_legend = F)
+
+
+annP2 = HeatmapAnnotation("p-value" = annotation_heatmap$p.value,
+                          which = "row", col = cols_pvalue,
+                          show_legend = F)
+
+
+#effect annotation
+
+annEffect = HeatmapAnnotation(
+  "effect-size" = annotation_heatmap$effect,
+   which = "row", col = list("effect-size" = effect_col_fun),
+   show_legend  =F, 
+   gp = gpar(col = "white"))
+
+#barplot annotation
+bardif= rowAnnotation(
+  "difference between groups" = anno_barplot(
+    annotation_heatmap$diff.btw, width = unit(4, "cm")))
+
+
+
+color_heatmap= colorRamp2(
+  seq(min(data_heatmap), max(
+    data_heatmap), length = 5), c(
+      "#0000FF","#5499C7", "#DAE7E4",  "red", "#FF0000"))
+
+htVvsF<-  ComplexHeatmap::Heatmap(
+  as.matrix(data_heatmap[-3]), col = color_heatmap, row_dend_reorder = F, 
+  width = ncol(data_heatmap)*unit(0.6, "cm"),
+  height = ncol(data_heatmap)*unit(10, "cm"),
+  left_annotation =  c(annP2,annEffect, colAnn),
+  heatmap_legend_param = list(direction = "vertical" ),
+  right_annotation = c(bardif),
+  column_split = factor(rep(c("V", "F")), levels = c("V", "F")),
+  cluster_rows = F,
+  column_km = 1, 
+  column_title_gp = gpar(fill = c(
+  "darkolivegreen1","darkolivegreen3"), col="white"),
+   border = F, column_gap = unit(0.5, "mm"), row_dend_side = "left",
+  row_names_side = "right",show_row_names = F ,
+  rect_gp = gpar(col = "white", lwd = 0.2), row_names_gp = gpar(
+  fontface ="italic", fontsize=10),
+  show_column_names = F, name = "rab.Win",
+  cluster_columns = F,
+  cluster_column_slices = F)
+
+htVvsF
+
+#pdf("fig_picrust_VvsF.pdf", width=7, height=20)
+#print(htVvsF)
+#dev.off()
+```
+
+
+#### Vegetative vs Grainfilling
+
+```{r, warning=FALSE, message=FALSE, fig.align="center",  fig.width=6, fig.height=14}
+# VvsF
+aldex_all_dif<- read_tsv( "../Data/aldex_Stage_vvsg_picrust.tsv")
+
+
+#construc heatmap
+annotation_heatmap<- aldex_all_dif%>% left_join(
+  levels, by = c("Feature.ID"="pathway"))%>% dplyr::select(
+  level2, Feature.ID, p.Value, effect, diff.btw) %>% mutate_at(
+    c(3), funs(p.value = case_when(
+    . <= 0.001 ~ "<0.001",
+    . >  0.001 & .  <= 0.01 ~ "<0.01",
+    . >  0.01 & .  <= 0.05 ~ "<0.05")))%>%arrange(
+      diff.btw)%>%column_to_rownames(var = "Feature.ID")
+
+data_heatmap<- aldex_all_dif %>% arrange(
+  diff.btw)%>%column_to_rownames(
+  var = "Feature.ID")%>%dplyr::select(
+    rab.win.0, rab.win.1) %>%  rename(
+  Ve= rab.win.0, Gr= rab.win.1)
+
+colAnn <- HeatmapAnnotation(
+  Superclass = annotation_heatmap$level2,
+  which = 'row',
+  col = cols_ann,
+  show_legend = F)
+
+cols_pvalue <- list(
+  'p-value' = c("<0.001" = '#AB0000',
+  "<0.01" = '#FF0000',
+  "<0.05"="#FFB6B6"))
+
+annP2 = HeatmapAnnotation(
+  "p-value" = annotation_heatmap$p.value,
+   which = "row", col = cols_pvalue,
+   show_legend = F)
+
+
+#effect annotation
+annEffect = HeatmapAnnotation(
+  "effect-size" = annotation_heatmap$effect,
+  which = "row", col = list(
+  "effect-size" = effect_col_fun),
+  show_legend  =F, 
+  gp = gpar(col = "white"))
+
+bardif= rowAnnotation(
+  "difference between groups" = anno_barplot(
+    annotation_heatmap$diff.btw, width = unit(4, "cm")))
+
+
+
+htVvsG<-ComplexHeatmap::Heatmap(
+  data_heatmap, col = color_heatmap, row_dend_reorder = F, 
+  width = ncol(data_heatmap)*unit(0.9, "cm"),
+  height = ncol(data_heatmap)*unit(14, "cm"),
+  left_annotation =  c(annP2, annEffect, colAnn),
+  heatmap_legend_param = list(direction = "vertical" ),
+  right_annotation = c(bardif),
+  cluster_column_slices = FALSE,
+  column_split = factor(rep(c("V", "G")), levels = c("V", "G")),
+  cluster_rows = F,show_heatmap_legend = T,
+  column_km = 1, column_title_gp = gpar(fill = c(
+  "darkolivegreen1","darkolivegreen"), col="white"),
+  border = F, column_gap = unit(0.5, "mm"), 
+  row_dend_side = "left",row_names_side = "right",show_row_names = F ,
+  rect_gp = gpar(col = "white", lwd = 0.2), 
+  row_names_gp = gpar(fontface ="italic", fontsize=10),
+  cluster_columns = F,
+  show_column_names = F, name = "rab.Win")
+
+
+htVvsG   
+
+#pdf("fig_picrust_VvsG.pdf", width=7, height=20)
+#print(htVvsG)
+#dev.off()
+```
+
+
+#### Flowering vs Grainfilling
+
+```{r, warning=FALSE, message=FALSE, fig.align="center",  fig.width=6, fig.height=8}
+aldex_all_dif<- read_tsv( "../Data/aldex_Stage_fvsg_picrust.tsv")
+
+
+#construc heatmap
+annotation_heatmap<- aldex_all_dif%>% left_join(
+  levels, by = c("Feature.ID"="pathway"))%>% dplyr::select(
+  level2, Feature.ID, p.Value, effect, diff.btw) %>% mutate_at(
+  c(3), funs(p.value = case_when(
+  . <= 0.001 ~ "<0.001",
+  . >  0.001 & .  <= 0.01 ~ "<0.01",
+  . >  0.01 & .  <= 0.05 ~ "<0.05")))%>%arrange(
+  diff.btw)%>%column_to_rownames(var = "Feature.ID")
+
+data_heatmap<- aldex_all_dif %>% arrange(
+  diff.btw)%>%column_to_rownames(
+  var = "Feature.ID")%>%dplyr::select(
+  rab.win.0, rab.win.1) %>% rename(
+  Fl = rab.win.0, Gr= rab.win.1)
+
+colAnn <- HeatmapAnnotation(
+  Superclass = annotation_heatmap$level2,
+  which = 'row',
+  col = cols_ann,
+  show_legend = F)
+
+cols_pvalue <- list(
+  'p-value' = c("<0.001" = '#AB0000',
+  "<0.01" = '#FF0000',
+  "<0.05"="#FFB6B6"))
+
+annP2 = HeatmapAnnotation(
+  "p-value" = annotation_heatmap$p.value,
+   which = "row", col = cols_pvalue,
+   show_legend = F)
+
+#effect annotation
+
+annEffect = HeatmapAnnotation(
+  "effect-size" = annotation_heatmap$effect,
+   which = "row", col = list("effect-size" = effect_col_fun),
+   show_legend  =F, 
+   gp = gpar(col = "white"))
+
+bardif= rowAnnotation(
+  "difference between groups" = anno_barplot(
+    annotation_heatmap$diff.btw, width = unit(4, "cm")))
+
+
+
+htFvsG<-ComplexHeatmap::Heatmap(
+  data_heatmap, col = color_heatmap, row_dend_reorder = F, 
+  width = ncol(data_heatmap)*unit(0.9, "cm"),
+  height = ncol(data_heatmap)*unit(7, "cm"),
+  left_annotation =  c(annP2, annEffect, colAnn),
+  heatmap_legend_param = list(direction = "vertical" ),
+  right_annotation = c(bardif),
+  column_split = rep(c("F", "G")),
+  cluster_rows = F, show_heatmap_legend = T,
+  cluster_column_slices = F,
+  column_km = 1, column_title_gp = gpar(
+  fill = c("darkolivegreen3","darkolivegreen" ), col="white"),
+  border = F, column_gap = unit(0.5, "mm"),
+  cluster_columns = F,
+  row_dend_side = "left",row_names_side = "right",show_row_names = F ,
+  rect_gp = gpar(col = "white", lwd = 0.2), row_names_gp = gpar(
+  fontface ="italic", fontsize=10),show_column_names = F, name = "rab.Win")
+
+htFvsG
+#pdf("fig_picrust_FvsG.pdf", width=7, height=20)
+#print(htFvsG)
+#dev.off()
+
+```

@@ -1,0 +1,171 @@
+---
+title: "Beta Diversity Plot"
+author:
+- name: Yendi E. Navarro-Noya
+  affiliation: Laboratory of Biotic Interactions, Centro de Investigación en Ciencias
+    Biológicas, Universidad Autónoma de Tlaxcala, Tlaxcala, Mexico
+  email: yendiebenezer.navarro.n@uatx.mx
+- name: Stephanie Hereira-Pacheco
+  affiliation: Laboratory of Soil Ecology, CINVESTAV-IPN, Ciudad de México, Mexico
+  email: shereirap@gmail.com
+date: "`r format(Sys.time(), '%d - %m - %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    df_print: paged
+---
+
+------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+# III. BETA-DIVERSITY PLOT
+
+### Loading libraries
+
+```{r, warning=FALSE, message=FALSE}
+library(cowplot)
+library(tidyverse)
+library(ggpubr)
+library(circlize)
+library(viridis)
+library(RColorBrewer)
+library(grid)
+library(ggplot2)
+```
+
+### Loading and formatting files
+
+```{r, warning=FALSE, message=FALSE}
+beta<- read_tsv("../Data/beta_diversity.txt") %>% mutate(qs = case_when(
+  q == 0  ~ "q=0 (species richness)",
+  q == 1 ~ "q=1 (frequent species)",
+  q == 2 ~ "q=2 (dominant species)")) %>% rename("ASVs_turnover" = TurnoverComp)
+head(beta)
+
+
+
+```
+
+```{r, echo=F}
+ann_text_treatment<-data.frame(Comparison=c(
+"CA_BSvsRh", "CA_BSvsRh", "CA_BSvsRh"),
+"ASVs_turnover"=c(1,1,1), 
+qs=c("q=0 (species richness)","q=1 (frequent species)","q=2 (dominant species)"),
+label=c("p<0.001","p=0.399", "p=0.365")) #tittles and positiong in y axis
+
+beta_treatment<-beta %>%
+  filter(str_detect(Comparison, '^CA|^CP'))%>% 
+  ggbarplot(x="Comparison", y="ASVs_turnover", fill = "Comparison", add = "mean_se", 
+            position = position_dodge())+
+  theme_bw()+
+  facet_grid(~qs)+
+  theme(panel.spacing=unit(1,"lines"),
+        # strip.background=element_rect(color="grey30", fill="gray90"),
+        # panel.border=element_rect(color="black"),
+        #strip.text.x = element_text(
+        #  size = 12, color = "black", face = "bold"),
+        strip.text.x = element_text(size = 14),
+        axis.text =  element_text(colour = "black", size = 14),
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(), 
+        legend.title = element_blank(),
+        axis.title.y = element_text(size = 16),
+        # legend.text = element_text(size=16), 
+        # axis.text.x = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        # legend.position = c(0.6,0.8), 
+        legend.direction = "vertical" ,
+        legend.position = "none")+scale_fill_manual(values = c("#212F3D","#839192"))+  
+  geom_text(data = ann_text_treatment,label=ann_text_treatment$label)
+
+
+
+```
+
+### Treatment plot
+
+```{r}
+ann_text_treatment<-data.frame(
+  Comparison=c("CA_BSvsRh", "CA_BSvsRh", "CA_BSvsRh"),
+  "ASVs_turnover"=c(1,1,1),
+  qs=c("q=0 (species richness)","q=1 (frequent species)","q=2 (dominant species)"),
+  label=c("p<0.001","p=0.399", "p=0.365")) #tittles and positiong in y axis
+
+beta_treatment<- beta %>%
+  filter(str_detect(Comparison, '^CA|^CP'))%>% ggplot(
+    aes(y=`ASVs_turnover`,x=Comparison,  fill=Comparison)) +
+  geom_boxplot(position=position_dodge(1), outlier.shape = NA, color="black",
+               width=0.6)+theme_bw()+
+  labs(y = "Proportion of ASVs turnover")+
+  facet_grid(~qs, scales = "free")+
+  theme(panel.spacing=unit(1,"lines"),
+        # strip.background=element_rect(color="grey30", fill="gray90"),
+        # panel.border=element_rect(color="black"),
+        #strip.text.x = element_text(
+        #  size = 12, color = "black", face = "bold"),
+        strip.text.x = element_text(size = 10),
+        axis.text =  element_text(colour = "black", size = 10),
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(), 
+        legend.title = element_blank(),
+        axis.title.y = element_text(size = 14),
+        # legend.text = element_text(size=16), 
+        # axis.text.x = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        # legend.position = c(0.6,0.8), 
+        legend.direction = "vertical" ,
+        legend.position = "none")+scale_fill_manual(values = c("#212F3D","#839192"))+  
+  geom_text(data = ann_text_treatment,label=ann_text_treatment$label)
+beta_treatment
+#pdf("fig_beta_treatment.pdf", width=6, height=3)
+#print(beta_treatment)
+#dev.off()
+
+```
+
+### Soil Plot
+
+```{r}
+ann_text_soil<-data.frame(
+  Comparison=c("BS_CPvsCA", "BS_CPvsCA", "BS_CPvsCA"),
+  "ASVs_turnover"=c(1,1,1),
+  qs=c("q=0 (species richness)","q=1 (frequent species)","q=2 (dominant species)"),
+  label=c("p<0.001","p<0.001", "p<0.001")) #tittles and positiong in y axis
+
+beta_soil<- beta %>%
+  filter(!str_detect(Comparison, '^CA|^CP'))%>% ggplot(
+    aes(y=`ASVs_turnover`,x=Comparison,  fill=Comparison)) +
+  geom_boxplot(position=position_dodge(1), outlier.shape = NA, color="black",
+               width=0.6)+theme_bw()+
+  labs(y = "Proportion of ASVs turnover")+
+  facet_grid(~qs, scales = "free")+
+  theme(panel.spacing=unit(1,"lines"),
+        # strip.background=element_rect(color="grey30", fill="gray90"),
+        # panel.border=element_rect(color="black"),
+        #strip.text.x = element_text(
+        #  size = 12, color = "black", face = "bold"),
+        strip.text.x = element_text(size = 10),
+        axis.text =  element_text(colour = "black", size = 10),
+        axis.ticks.x=element_blank(), 
+        axis.title.x = element_blank(), 
+        legend.title = element_blank(),
+        axis.title.y = element_text(size = 14),
+        # legend.text = element_text(size=16), 
+        # axis.text.x = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        # legend.position = c(0.6,0.8), 
+        legend.direction = "vertical" ,
+        legend.position = "none")+scale_fill_manual(values = c("darkgoldenrod4", "#365238"))+  
+  geom_text(data = ann_text_soil,label=ann_text_soil$label)
+beta_soil
+
+#pdf("fig_beta_soil.pdf", width=6, height=3)
+#print(beta_soil)
+#dev.off()
+
+```
