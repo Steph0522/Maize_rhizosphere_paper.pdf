@@ -1,0 +1,493 @@
+---
+title: "Phylum and Genera Plot"
+author: "Steph"
+date: "23/12/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+### *This script generates the figure of Phylum barplots and Genera heatmaps with z-scores*
+
+
+```{r, echo=TRUE, eval=TRUE}
+#LOADING LIBRARIES
+
+library(tidyverse)
+library(cowplot)
+library(RColorBrewer)
+library(gtable)
+library(ComplexHeatmap)
+library(circlize)
+library(viridis)
+library(ALDEx2) 
+library(matrixStats)
+```
+# PHYLUM BARPLOTS
+```{r, echo=TRUE, eval=TRUE}
+#Loading files 
+phylum<- read.csv("../../Data/phylum_data_filter.csv", check.names = F)
+
+#Formatting data
+phylum_data<- phylum %>% dplyr::select(index, Soil_sample:Maize_development_stage)
+
+phylum_data$Sample <- factor(phylum_data$Soil_sample,
+                     levels = c("bulksoil","Rhizosphere"),
+                     labels = c("Bulk soil", "Rhzosphere"))
+
+phylum_data$Practice<- factor(phylum_data$Treatment,
+                      levels = c( "AC", "AT"),
+                      labels = c("CA", "CP"))
+phylum_taxa<-  phylum%>% column_to_rownames(var = "index")%>% select_if(is.numeric)%>%select_all(
+  ~str_replace(., "k__Bacteria;p__", ""))   %>%select_all(
+    ~str_replace(., "k__Archaea;p__", "")) %>%select_all(
+      ~str_replace(., "k__Bacteria;__", "Other"))     
+phylum_taxa<- data.frame(t(phylum_taxa), check.names = F)  
+
+head(phylum_data)
+head(phylum_taxa)
+
+```
+
+### Get the relative abundances and check the relative abundance
+```{r}
+phylum_abund <- t(t(phylum_taxa)/colSums(phylum_taxa))
+colSums(phylum_abund)
+
+phylum_gather <- data.frame(phylum_abund) %>%
+  mutate(Phylum = row.names(phylum_abund)) %>%
+  gather(key = "SampleID", value = "RelAb", -Phylum)  
+
+phylum_ordered <- data.frame(Phylum = row.names(phylum_abund), Total= rowMeans(phylum_abund),
+#Total = rowSums(phylum_abund)/sum(phylum_abund),  
+stdev=rowSds(as.matrix(phylum_abund))) %>%
+  arrange(desc(Total)) %>%
+  mutate(CumSum = cumsum(Total))%>%mutate_if(is.numeric, funs(.*100))
+
+head(phylum_ordered)
+
+```
+### Generate Data frame to plot
+```{r}
+phylum_plot <- phylum_gather %>%
+  filter(Phylum %in% phylum_ordered$Phylum[1:18]) %>%
+  inner_join(phylum_data, by = c("SampleID"="index")) %>% mutate(RelAb100 = RelAb*100)%>% select_all(
+  funs(str_replace_all(., "CA", "")))%>% select_all(funs(str_replace_all(., "CP", "")))
+
+```
+### First Plot
+```{r}
+phylum_plot_ca<- phylum_plot %>% filter(Treatment=="AT")
+
+level_order1<- factor(phylum_plot_ca$SampleID, level =c(
+  "CPVBS_29", "CPVBS_51",
+  "CPFBS_29", "CPFBS_51",
+  "CPGBS_29", "CPGBS_51",
+  "CPVRh_29", "CPVRh_51",
+  "CPFRh_29", "CPFRh_51",
+  "CPGRh_29", "CPGRh_51"), 
+  labels =c(
+    "V1_29", "V1_51",
+    "F1_29", "F1_51",
+    "G1_29", "G1_51",
+    "V2_29", "V2_51",
+    "F2_29", "F2_51",
+    "G2_29", "G2_51") )
+
+
+
+phylumplot_ca <-phylum_plot_ca%>%ggplot() +
+  geom_bar(aes(level_order1, RelAb100, fill = Phylum), stat = "identity", position = "stack") +
+  facet_grid(. ~  Sample , scales = "free", space = "free") +
+  scale_fill_manual(name = "Phylum",
+                    values = c(brewer.pal(12, "Paired")[1:12],
+                               brewer.pal(8, "Set2")[1:8], brewer.pal(12, "Paired")[1:12])) +
+  scale_color_manual(values = c(brewer.pal(12, "Paired")[7:10]),
+                     guide = FALSE) +
+  theme_bw() +
+  theme(text = element_text(size = 17),
+        legend.text = element_text(size = 10),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, colour = "black"),
+        axis.title = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.spacing=unit(0,"lines"),
+        strip.text.x = element_text(size = 12 ,color="white"),
+        axis.text.y =  element_blank(),
+        axis.ticks=element_blank(), 
+        legend.position = "none") +
+  guides(fill = guide_legend(ncol = 1))
+phylumplot_ca
+
+g1 <- ggplot_gtable(ggplot_build(phylumplot_ca))
+strip_t <- which(grepl('strip-t', g1$layout$name))
+fills <- c("darkgoldenrod4", "#365238")
+k <- 1
+for (i in strip_t) {
+  j <- which(grepl('rect', g1$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g1$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid::grid.draw(g1)
+
+
+
+
+```
+
+
+### Second Plot
+
+```{r}
+phylum_plot_cp<- phylum_plot %>% filter(Treatment=="AC")
+level_order2<- factor(phylum_plot_cp$SampleID, level =c("CAVBS_18", "CAVBS_59",
+                                                      "CAFBS_18", "CAFBS_59",
+                                                      "CAGBS_18", "CAGBS_59",
+                                                      "CAVRh_18", "CAVRh_59",
+                                                      "CAFRh_18", "CAFRh_59",
+                                                      "CAGRh_18", "CAGRh_59"),
+                      
+                      labels =c("V1_18", "V1_59",
+                                "F1_18", "F1_59",
+                                "G1_18", "G1_59",
+                                "V2_18", "V2_59",
+                                "F2_18", "F2_59",
+                                "G2_18", "G2_59"))
+
+
+phylumplot_cp <- phylum_plot_cp%>%ggplot() +
+  labs(y = "Relative abundance (%)") +
+  geom_bar(aes(level_order2, RelAb100, fill = Phylum), stat = "identity", position = "stack") +
+  facet_grid(. ~  Sample , scales = "free", space = "free") +
+  scale_fill_manual(name = "Phylum",
+                    values = c(brewer.pal(12, "Paired")[1:12],
+                               brewer.pal(8, "Set2")[1:8], brewer.pal(12, "Paired")[1:12])) +
+   scale_color_manual(values = c(brewer.pal(12, "Paired")[7:10]),
+                     guide = FALSE) +
+  theme_bw() +
+  theme(text = element_text(size = 17),
+        legend.text = element_text(size = 10),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, size = 14),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.spacing=unit(0,"lines"),
+        strip.text.x = element_text(size = 12 ,color="white"),
+       # axis.ticks=element_blank(), 
+        legend.position = "right",
+        axis.title.x = element_blank(),
+        axis.text = element_text(color="black"))+
+  guides(fill = guide_legend(ncol = 1))
+
+
+
+phylumplot_cp
+
+phylumplot_cp_nolegend<- phylumplot_cp+theme(legend.position = "none")
+
+g2 <- ggplot_gtable(ggplot_build(phylumplot_cp_nolegend))
+strip_t <- which(grepl('strip-t', g2$layout$name))
+fills <- c("darkgoldenrod4", "#365238")
+k <- 1
+for (i in strip_t) {
+  j <- which(grepl('rect', g2$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g2$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+grid::grid.draw(g2)
+```
+
+### Joining plots
+```{r, echo=TRUE}
+legend_ca<-phylum_plot %>% filter(!Treatment=="AC")%>%ggplot( aes(Practice, "A")) +
+  geom_tile(aes(fill = Practice), width=1) + 
+  geom_text(aes(label = Practice), color="white")+ theme_nothing()+
+  scale_fill_manual(values = c("#909497", "gray"))+theme(
+    axis.title = element_blank(),
+    axis.text = element_blank(), 
+    axis.ticks = element_blank(), 
+    legend.position = "none",
+    plot.margin = margin(r=-1, l=-1, unit = "cm"))
+
+legend_cp<-phylum_plot %>% filter(!Treatment=="AT")%>%ggplot( aes(Practice, "A")) +
+  geom_tile(aes(fill = Practice), width=1) + 
+  geom_text(aes(label = Practice), color="white")+ theme_nothing()+
+  scale_fill_manual(values = c("#212F3C", "gray"))+theme(
+    axis.title = element_blank(),
+    axis.text = element_blank(), 
+    axis.ticks = element_blank(), 
+    legend.position = "none",
+    plot.margin = margin(r=-0.1, l=-0.1, t =-0.01,unit = "cm"))
+
+first_part<-plot_grid(legend_ca,g1 , nrow = 2, axis = "lr" ,align = "hv",
+               rel_heights = c(0.5,10))
+second_part<- plot_grid(legend_cp,  g2 , nrow = 2, axis = "lr" ,align = "hv",
+                rel_heights = c(0.5,10))
+third_part<- plot_grid(second_part,first_part,  axis = "lr", align = "hv", rel_widths = c(1.2,1))
+barplot_phylum<-  plot_grid(third_part, get_legend(phylumplot_cp), rel_widths = c(5,2))
+barplot_phylum
+```
+
+# HEATMAP FIGURE
+```{r}
+#Importing data and subsetting otutable
+
+otu_table <- read.delim("../../Data/otutable_filter_grouped.txt", check.names = F, skip = 1, row.names = 1)#%>%dplyr::select(-taxonomy)
+metadata <- read.delim("../../Data/map_grouped.csv", check.names = F) 
+otu_table_gen<-read.csv("../../Data/genera_data_filter.csv", row.names = 1, check.names = F) %>% dplyr::select(-Soil_sample:-Maize_development_stage)
+taxonomy_naives<- read.delim("../../Data/taxonomy.tsv", check.names = F) %>% dplyr::select("Feature.ID"="#OTU ID","Taxon"=taxonomy)
+```
+
+### Relative abundace of genera
+```{r}
+#Importing data and subsetting otutable to summarice
+
+gen_taxa<-  otu_table_gen%>% select_if(is.numeric)%>%select_all(
+    ~str_replace(., "k__Archaea;p__", ""))    
+gen_taxa<- data.frame(t(gen_taxa), check.names = F)  
+
+gen_abund <- t(t(gen_taxa)/colSums(gen_taxa))
+colSums(gen_abund)
+
+gen_gather <- data.frame(gen_abund) %>%
+  mutate(Gen = row.names(gen_abund)) %>%
+    mutate(Genus = str_extract(Gen, "[^_]+$"))%>%
+  gather(key = "SampleID", value = "RelAb", -Genus)  %>%drop_na()
+
+genus_abund<- data.frame(gen_abund) %>% rownames_to_column(var = "ids")%>%mutate(
+  Genus = str_extract(ids, "[^_]+$"))%>%drop_na()%>%group_by(Genus)%>% summarise_if(is.numeric, mean) %>%mutate_if(is.numeric, funs(.*100))%>%
+  column_to_rownames(var = "Genus")
+
+gen_ordered <- data.frame(Genus = row.names(genus_abund), Total = rowMeans(genus_abund),  stdev=rowSds(as.matrix(genus_abund))) %>%
+  arrange(desc(Total)) %>%
+  mutate(CumSum = cumsum(Total))#%>%mutate_if(is.numeric, funs(.*100))
+
+head(gen_ordered)
+
+```
+#### Transforming data using ALDEx2
+```{r}
+
+transform <- as.data.frame(t(otu_table))%>%aldex.clr(., mc.samples = 128, denom="all", verbose = FALSE,useMC=FALSE)
+table_transform<- data.frame(t(transform@reads))
+ad.clr.abund.prop <- t(t(table_transform)/colSums(table_transform))
+colSums(ad.clr.abund.prop)
+
+otutable_transformed<- data.frame(ad.clr.abund.prop, check.names = F) %>% rownames_to_column(
+  var = "Feature.ID")%>%left_join(taxonomy_naives, by =  "Feature.ID")
+
+gen_transform<- otutable_transformed%>%mutate_if(
+  is.numeric, funs(.*100))%>%   separate(
+    Taxon, c("k", "p", "c", "o", "f", "g", "s"), sep = ";")%>% group_by(g)%>%
+  summarise_if(is.numeric, sum)%>%dplyr::rename(Taxa ="g")%>%drop_na(.)%>%mutate(
+    Means= rowMeans(select_if(., is.numeric))) %>% arrange(desc(Means))%>% select(
+      -Means)
+names<- gen_transform$Taxa
+gen_transform<- data.frame(t(gen_transform[-1]), check.names = F)
+ros<- rownames(gen_transform)
+colnames(gen_transform)<- names 
+```
+#### Transforming into z-scores values and setting labels
+```{r}
+gen_transform_zcores<-lapply(gen_transform, function(x) {
+  y<-scale(x, center=TRUE, scale=TRUE)})
+gen_zcores<- data.frame(gen_transform_zcores, check.names = F)
+rownames(gen_zcores)<- ros
+gen_zcores<- gen_zcores%>% rownames_to_column(var = "names")%>%dplyr::select(-" g__Chthoniobacter")#%>%select(-" g__Candidatus Nitrososphaera")
+
+gen_zcores$order<- factor(gen_zcores$names, level =c("CAVBS_18", "CAVBS_59",
+                                                     "CAFBS_18", "CAFBS_59",
+                                                     "CAGBS_18", "CAGBS_59",
+                                                     "CAVRh_18", "CAVRh_59",
+                                                     "CAFRh_18", "CAFRh_59",
+                                                     "CAGRh_18", "CAGRh_59",
+                                                     "CPVBS_29", "CPVBS_51",
+                                                     "CPFBS_29", "CPFBS_51",
+                                                     "CPGBS_29", "CPGBS_51",
+                                                     "CPVRh_29", "CPVRh_51",
+                                                     "CPFRh_29", "CPFRh_51",
+                                                     "CPGRh_29", "CPGRh_51"), 
+                          labels =c("V1_18", "V1_59",
+                                    "F1_18", "F1_59",
+                                    "G1_18", "G1_59",
+                                    "V2_18", "V2_59",
+                                    "F2_18", "F2_59",
+                                    "G2_18", "G2_59",
+                                    "V1_29", "V1_51",
+                                    "F1_29", "F1_51",
+                                    "G1_29", "G1_51",
+                                    "V2_29", "V2_51",
+                                    "F2_29", "F2_51",
+                                    "G2_29", "G2_51") )
+gen_zcores<- gen_zcores%>% column_to_rownames(var = "order")%>%dplyr::select(-names)
+
+gen_scores<-data.frame(t(gen_zcores), check.names = F)
+colnames(gen_scores)
+gen_scores<- gen_scores[c("V1_18" ,"V1_59",
+                          "F1_18" ,"F1_59",
+                          "G1_18" ,"G1_59",
+                          "V2_18" ,"V2_59",
+                          "F2_18" ,"F2_59",
+                          "G2_18" ,"G2_59",
+                          "V1_29" ,"V1_51",
+                          "F1_29" ,"F1_51",
+                          "G1_29" ,"G1_51",
+                          "V2_29" ,"V2_51",
+                          "F2_29" ,"F2_51",
+                          "G2_29" ,"G2_51" )]
+
+```
+#### Constructing Heatmaps of Genera
+```{r}
+gen_heat_scores<- gen_scores%>% rownames_to_column(var="Feature.ID")%>% dplyr::mutate(
+  taxa = str_extract(Feature.ID, "[^_]+$"))%>%drop_na(.)
+gen_heat_scores<- gen_heat_scores[1:51,]
+gen_heat_zcores<- gen_heat_scores%>% remove_rownames()%>%column_to_rownames(var = "taxa")
+
+gen_database_gen<- data.frame(t(otu_table_gen), check.names = F)%>%rownames_to_column(
+  var = "Taxon")%>%   separate(
+    Taxon, c("k", "p", "c", "o", "f", "g", "s"), sep = ";")%>%group_by(
+      p,g)%>% add_count()%>% ungroup()%>% mutate_all(
+        funs(str_replace(., "p__", "")))%>% 
+  mutate_all(funs(str_replace(., "g__", ""))) %>%
+   mutate(across(everything(), ~ifelse(.=="", NA, as.character(.))))%>% drop_na(g)%>% dplyr::select(p,g) %>% filter(!g=="__")%>% filter(
+      !g=="")
+
+
+annotation_heatmap_gen<-gen_heat_zcores %>% rownames_to_column(var = "g")%>%  inner_join(gen_database_gen, by = "g")%>% dplyr::select(p,g)
+annotation_heatmap_gen<-annotation_heatmap_gen[-4,]
+
+#f6= colorRamp2(seq(min(data_heatmap), max(data_heatmap), length = 5), c("#0000FF","#5499C7", "#DAE7E4",  "red", "#FF0000"))
+#annotation_heatmap_gen%>%group_by(p)%>%count()
+
+#annotation phylum
+cols_ann_gen <- list('phylum' = c("Acidobacteria" = "#A6CEE3" ,
+                                  "Actinobacteria" = "#1F78B4",
+                                  "Armatimonadetes" =  "#B2DF8A" ,
+                                  "Bacteroidetes"="#33A02C",
+                                  "BRC1"= "#FB9A99",
+                                  "Chloroflexi" ="#E31A1C" ,
+                                  "Cyanobacteria"="#FDBF6F" ,
+                                  "FBP"="#FF7F00",
+                                  "Firmicutes"  = "#CAB2D6",
+                                  "Gemmatimonadetes"  = "#6A3D9A",
+                                  "Nitrospirae"= "#FFFF99",
+                                  "OD1" ="#B15928",
+                                  "Other"="#66C2A5" ,
+                                  "Planctomycetes" = "#FC8D62",
+                                  "Proteobacteria"  = "#8DA0CB" ,
+                                  "TM7" = "#E78AC3" ,
+                                  "Verrucomicrobia" ="#A6D854" ,
+                                  "WS3"="#FFD92F"))
+
+
+
+colAnn_gen <- HeatmapAnnotation(phylum = annotation_heatmap_gen$p,
+                                which = 'row',
+                                col = cols_ann_gen,
+                                annotation_width = unit(c(1, 4), 'cm'),
+                                gap = unit(1, 'mm'), show_legend = F)
+
+gen_heat_zcores2<- gen_heat_zcores%>% select_all(
+  funs(str_replace_all(., "CA", "")))%>% select_all(funs(str_replace_all(., "CP", "")))
+gen_heat_zcores2<-gen_heat_zcores2[-1]
+#fix(gen_heat_zcores2)
+```
+### Heatmap CA
+
+```{r}
+split1 = rep(1:2, each = 6)
+
+ha1 = HeatmapAnnotation(foo = anno_block(gp = gpar(fill = c("darkgoldenrod4","#365238",  "green")), 
+                   labels_gp = gpar(col = "white"),
+                   labels = c("Bulk soil", "Rhizosphere")))
+
+ht1<-ComplexHeatmap::Heatmap(gen_heat_zcores2[1:12], 
+                             column_split = split1,
+                             top_annotation = ha1, 
+                             column_title = "CA",
+                             column_title_gp = gpar(fill = "#212F3C", col = "white"),
+                             cluster_columns = F,
+                             cluster_rows = F,
+                             left_annotation =  colAnn_gen,
+                             heatmap_legend_param = list(direction = "horizontal", 
+                             legend_width = unit(2, "cm"),
+                             position = "bottom"),
+                             border = T, column_gap = unit(0.5, "mm"), 
+                             rect_gp = gpar(col = "white", lwd = 0.2), 
+                             row_names_gp = gpar(fontface ="italic", fontsize=10),
+                             show_column_names =T,
+                             show_row_names = F,
+                             show_heatmap_legend =F,
+                             name = "z-score \n CLR transformed \n Relative abundance")
+
+ht1
+```
+
+### Heatmap CP
+
+```{r}
+split2 = rep(1:2, each = 6)
+
+ha2 = HeatmapAnnotation(#empty = anno_empty(border = FALSE),
+  foo = anno_block(gp = gpar(fill = c("darkgoldenrod4","#365238",  "green")), 
+                   labels_gp = gpar(col = "white"),
+                   labels = c("Bulk soil", "Rhizosphere")))
+ht2<-ComplexHeatmap::Heatmap(gen_heat_zcores2[13:24], 
+                             column_split = split1,
+                             top_annotation = ha1,#col = f6,   
+                             column_title = "CP",
+                             column_title_gp = gpar(fill = "#909497", col = "white"),
+                             #row_dend_reorder = TRUE,
+                             #cluster_columns = cluster_within_group(gen_heat_zcores, group_cols),
+                             #cluster_columns = row_dend,
+                             #clustering_method_columns = "complete",
+                             cluster_columns = F,
+                             cluster_rows = F,
+                             #left_annotation =  colAnn_gen,
+                             # column_split = rep(c("C", "D"), 5),
+                             # column_split = 2,
+                             heatmap_legend_param = list(direction = "horizontal", 
+                                                         legend_width = unit(2, "cm"),
+                                                         position = "center"),
+                             # column_title = c("", "CA"),
+                             #column_title_gp = gpar(fill = c("#212F3D", "#839192" ), col="white"),
+                             border = T, column_gap = unit(0.5, "mm"), 
+                             #row_dend_side = "left",row_names_side = "right",
+                             rect_gp = gpar(col = "white", lwd = 0.2), 
+                             row_names_gp = gpar(fontface ="italic", fontsize=10),
+                             show_column_names =T,
+                             show_row_names = T,
+                             show_heatmap_legend =T, 
+                             name = "z-score \n clr transformed \n Relative abundance")
+
+ht2
+
+
+```
+
+
+### Joining Heatmaps
+
+```{r}
+ht3<-ht1+ht2
+ht3
+```
+
+
+#### Joining both figures (Barplots and Heatmaps) and Save
+
+```{r, fig.width=12}
+zcores_gen<- grid.grabExpr(draw(ht3))
+
+phyl_gen<-plot_grid(barplot_phylum, zcores_gen , ncol = 2, rel_widths = c(1.5,1.7), labels = c("A", "B"))
+phyl_gen
+
+ggsave('/home/steph/Desktop/fig_phylum_and_gen_2.tiff',
+      width = 17, height = 7, dpi = 300, plot = phyl_gen)
+```
+
+
